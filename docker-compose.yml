@@ -1,0 +1,79 @@
+version: '3.1'
+
+services:
+
+  postgres-master:
+    image: postgres:14.6
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: root
+      POSTGRES_USER: root
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: postgres -c logging_collector=on -c log_destination=stderr -c log_directory=/logs -c config_file=/etc/postgresql/postgres_1.conf -c config_file=/etc/postgresql/pg_hba_1.conf
+    #command: createuser -U root --replication replicauser
+    # CREATE ROLE replicauser WITH REPLICATION LOGIN PASSWORD '12345';
+    volumes:
+       - postgresVolumeMaster:/var/lib/postgresql/data:rw
+       - ./logs:/logs:rw
+       - type: bind
+         source: ./configs/postgres_1.conf
+         target: /etc/postgresql/postgres_1.conf
+       - type: bind
+         source: ./pg_hba.conf
+         target: /etc/postgresql/pg_hba_1.conf
+    networks:
+      postgres-network:
+        ipv4_address: 172.28.0.19
+        aliases:
+          - postgres-master
+    ports:
+      - 5432:5432
+
+  postgres-slave:
+    image: postgres:14.6
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: root
+      POSTGRES_USER: root
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: postgres -c logging_collector=on -c log_destination=stderr -c log_directory=/logs -c config_file=/etc/postgresql/postgres_2.conf #-c config_file=/etc/postgresql/pg_hba_2.conf
+    #command: postgres pg_basebackup --pgdata /var/lib/postgresql/data --format=plain --write-recovery-conf --checkpoint=fast --label=mffb --progress --host=postgres-master --port=5432 --username=repl
+    volumes:
+       - postgresVolumeSlave:/var/lib/postgresql/data:rw
+       - ./logs:/logs:rw
+       - type: bind
+         source: ./configs/postgres_2.conf
+         target: /etc/postgresql/postgres_2.conf
+       - type: bind
+         source: ./configs/pg_hba_2.conf
+         target: /etc/postgresql/pg_hba_2.conf
+    networks:
+      postgres-network:
+        ipv4_address: 172.28.0.20
+        aliases:
+          - postgres-slave
+    ports:
+      - 5433:5432
+
+  adminer:
+    image: adminer
+    restart: always
+    networks:
+      postgres-network:
+        ipv4_address: 172.28.0.21
+        aliases:
+          - adminer
+    ports:
+      - 5755:8080
+
+volumes:
+  postgresVolumeMaster:
+  postgresVolumeSlave:
+
+networks:
+  postgres-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/24
